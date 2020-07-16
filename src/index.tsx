@@ -10,10 +10,23 @@ import {
   SectionListProps,
   StyleSheet,
   View,
-  StyleProp,
   ViewStyle,
 } from 'react-native';
-import Animated, {
+import Animated, { Easing } from 'react-native-reanimated';
+import {
+  NativeViewGestureHandler,
+  PanGestureHandler,
+  PanGestureHandlerProperties,
+  State as GestureState,
+  TapGestureHandler,
+} from 'react-native-gesture-handler';
+import { Assign } from 'utility-types';
+
+const FlatListComponentType = 'FlatList' as const;
+const ScrollViewComponentType = 'ScrollView' as const;
+const SectionListComponentType = 'SectionList' as const;
+
+const {
   abs,
   add,
   and,
@@ -21,7 +34,6 @@ import Animated, {
   Clock,
   clockRunning,
   cond,
-  Easing,
   eq,
   event,
   Extrapolate,
@@ -38,19 +50,7 @@ import Animated, {
   sub,
   timing,
   Value,
-} from 'react-native-reanimated';
-import {
-  NativeViewGestureHandler,
-  PanGestureHandler,
-  PanGestureHandlerProperties,
-  State as GestureState,
-  TapGestureHandler,
-} from 'react-native-gesture-handler';
-import { Assign } from 'utility-types';
-
-const FlatListComponentType = 'FlatList' as const;
-const ScrollViewComponentType = 'ScrollView' as const;
-const SectionListComponentType = 'SectionList' as const;
+} = Animated;
 
 const { height: windowHeight } = Dimensions.get('window');
 const DRAG_TOSS = 0.05;
@@ -161,7 +161,7 @@ type CommonProps = {
   /*
    * Style to be applied to the container.
    */
-  containerStyle?: StyleProp<ViewStyle>;
+  containerStyle?: Animated.AnimateStyle<ViewStyle>;
 };
 
 type Props<T> = CommonProps &
@@ -519,6 +519,26 @@ export class ScrollBottomSheet<T extends any> extends Component<Props<T>> {
           clockRunning(this.animationClock)
         ),
         [
+          this.didScrollUpAndPullDown,
+          this.setTranslationY,
+          set(this.tempDestSnapPoint, add(snapPoints[0], this.extraOffset)),
+          cond(not(this.isManuallySetValue), set(this.nextSnapIndex, 0)),
+          set(
+            this.destSnapPoint,
+            cond(
+              this.isManuallySetValue,
+              this.manualYOffset,
+              this.calculateNextSnapPoint()
+            )
+          ),
+          cond(this.isManuallySetValue, [set(this.animationFinished, 0)]),
+          set(
+            this.lastSnap,
+            sub(
+              this.destSnapPoint,
+              cond(eq(this.scrollUpAndPullDown, 1), this.lastStartScrollY, 0)
+            )
+          ),
           runTiming({
             clock: this.animationClock,
             from: cond(
@@ -696,8 +716,16 @@ export class ScrollBottomSheet<T extends any> extends Component<Props<T>> {
                   const { method, args } = imperativeScrollOptions[
                     this.props.componentType
                   ];
-                  // @ts-ignore
-                  this.props.innerRef.current?.getNode()[method](args);
+                  if (
+                    (this.props.componentType === 'FlatList' &&
+                      (this.props?.data?.length || 0) > 0) ||
+                    (this.props.componentType === 'SectionList' &&
+                      this.props.sections.length > 0) ||
+                    this.props.componentType === 'ScrollView'
+                  ) {
+                    // @ts-ignore
+                    this.props.innerRef.current?.getNode()[method](args);
+                  }
                 })
               ),
               set(this.dragY, 0),
